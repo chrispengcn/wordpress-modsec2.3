@@ -1,12 +1,20 @@
 #!/bin/bash
 set -e
+
+echo "请输入当前网站的域名（例如：example.com）："
+read -r DOMAIN
+if [[ -z "${DOMAIN}" ]]; then
+    echo "❌ 域名不能为空！"
+    exit 1
+fi
+CLEAN_DOMAIN=$(echo "${DOMAIN}" | tr '.' '_' | tr '-' '_')
+
 MODSEC_CRS_VOLUME="modsec-crs-rules"
 MODSEC_CORE_VOLUME="modsec-core-config"
 LOCAL_CRS_DIR="/opt/modsecurity-crs"
 IMAGE_NAME="wordpress-modsec:6.9"
-RANDOM_STR=$(tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 6)
-WP_DATA_VOLUME="WP_DATA_${RANDOM_STR}"
-CONTAINER_NAME="wordpress-modsec-${RANDOM_STR}"
+WP_DATA_VOLUME="WP_DATA_${CLEAN_DOMAIN}"
+CONTAINER_NAME="wordpress-modsec-${CLEAN_DOMAIN}"
 
 if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${IMAGE_NAME}$"; then
     echo "开始构建镜像 ${IMAGE_NAME}..."
@@ -43,6 +51,13 @@ else
     echo "❌ 未找到CRS 2.x配置文件，克隆可能失败"
     exit 1
 fi
+
+# 修复1：复制2.x配置为3.x命名，匹配Apache引用的crs-setup.conf
+cp -f ${LOCAL_CRS_DIR}/modsecurity_crs_10_setup.conf ${LOCAL_CRS_DIR}/crs-setup.conf
+
+# 修复2：新建空白的rules目录，解决Apache引用不存在的问题
+mkdir -p ${LOCAL_CRS_DIR}/rules
+
 chmod -R 755 ${LOCAL_CRS_DIR}
 
 sed -i 's/setvar:tx.paranoia_level=2/setvar:tx.paranoia_level=1/g' ${LOCAL_CRS_DIR}/modsecurity_crs_10_setup.conf
@@ -53,17 +68,16 @@ cp -r ${LOCAL_CRS_DIR}/* ${VOLUME_MOUNT}/ || { echo "❌ 同步规则到存储�
 echo "✅ CRS 2.2.9规则（适配ModSec 2.3）同步完成"
 
 echo "初始化ModSecurity 2.3核心配置..."
-# ========== 核心修改部分开始 ==========
 docker run --rm \
   -v ${MODSEC_CORE_VOLUME}:/etc/modsecurity \
   ${IMAGE_NAME} \
   sh -c "
-    # 1. 备份原有配置文件（带时间戳，避免覆盖）
+    # 备份原有modsecurity.conf
     if [ -f /etc/modsecurity/modsecurity.conf ]; then
         cp /etc/modsecurity/modsecurity.conf /etc/modsecurity/modsecurity.conf.bak.\$(date +%Y%m%d%H%M%S)
         echo '✅ 已备份原有modsecurity.conf为modsecurity.conf.bak.$(date +%Y%m%d%H%M%S)'
     fi
-    # 2. 通过echo命令逐行生成新配置（精准匹配指定内容）
+    # 生成modsecurity.conf
     echo 'SecRuleEngine On' > /etc/modsecurity/modsecurity.conf
     echo 'SecRequestBodyAccess On' >> /etc/modsecurity/modsecurity.conf
     echo 'SecResponseBodyAccess On' >> /etc/modsecurity/modsecurity.conf
@@ -79,14 +93,13 @@ docker run --rm \
     echo 'SecDebugLogLevel 3' >> /etc/modsecurity/modsecurity.conf
     echo \"SecRule ARGS '\\'\\s*OR\\s*1=1\\'' \\\"id:1000,phase:2,deny,status:403,msg:'SQL Injection Attempt'\\\"\" >> /etc/modsecurity/modsecurity.conf
     echo \"SecRule ARGS_GET:id \\\"\\\\x27\\\" \\\"id:1001,phase:2,deny,status:403,msg:'Single Quote Injection Attempt'\\\"\" >> /etc/modsecurity/modsecurity.conf
-    # 3. 创建必要目录并授权
+
+    # 必要目录与权限
     mkdir -p /tmp/modsecurity /var/log/apache2
     chown -R www-data:www-data /etc/modsecurity /tmp/modsecurity /var/log/apache2
     chmod 755 /etc/modsecurity/modsecurity.conf
-    # 4. 消除Apache ServerName警告
     echo 'ServerName localhost' >> /etc/apache2/apache2.conf
 " || { echo "❌ 核心配置初始化失败"; exit 1; }
-# ========== 核心修改部分结束 ==========
 
 if ! docker run --rm -v ${MODSEC_CORE_VOLUME}:/tmp/modsec ${IMAGE_NAME} sh -c "test -f /tmp/modsec/modsecurity.conf"; then
     echo "❌ 核心卷中未找到modsecurity.conf，初始化失败"
@@ -110,7 +123,7 @@ docker run -d \
   -e WORDPRESS_DB_NAME=wordpress \
   ${IMAGE_NAME} || { echo "❌ 容器启动失败"; exit 1; }
 
-echo -e "\n🎉 部署完成：
+echo "\n🎉 部署完成（域名：${DOMAIN}）：
 - 本地CRS规则目录：${LOCAL_CRS_DIR}
 - 容器名称：${CONTAINER_NAME}
 - WP数据卷：${WP_DATA_VOLUME}
