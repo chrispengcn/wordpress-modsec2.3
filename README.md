@@ -12,7 +12,7 @@
 | Apache                   | 2.4.66 (Debian) | 容器内置Web服务器        |
 | PHP                      | 8.3.30        | 容器内置PHP版本          |
 
-## 三、文件说明
+## 三、文件说明  [非最新版本]
 ### 1. Dockerfile（建议配套使用）
 ```dockerfile
 # 基于官方WordPress 6.9 Apache镜像构建
