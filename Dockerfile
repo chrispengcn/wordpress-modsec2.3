@@ -9,9 +9,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null 2>&1 && \
     sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf && \
     sed -i 's/SecResponseBodyAccess On/SecResponseBodyAccess Off/' /etc/modsecurity/modsecurity.conf && \
     echo "Include /etc/modsecurity-crs/crs-setup.conf" >> /etc/apache2/conf-enabled/security2.conf 
-
+    
 
 VOLUME ["/etc/modsecurity-crs", "/etc/modsecurity", "/var/www/html"]
 
 CMD ["apache2-foreground"]
-
