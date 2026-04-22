@@ -1,6 +1,3 @@
-结合你**全部最终定稿**的环境、所有踩坑修复、PHP8.2 通用版、挂载结构、自动下载CRS、ModSecurity完美拦截、全套文件、完整部署步骤，我给你生成一份**完整版、清晰、可直接交付使用**的 `README.md`，结构完整、步骤详细、文件说明、目录结构、验证方法、常见问题全部写全。
-
-# README.md
 # WordPress + Apache + ModSecurity + OWASP CRS WAF 镜像
 基于官方 `wordpress:php8.2-apache` 构建，内置 **ModSecurity WAF 防火墙**，自动下载 OWASP CRS 官方规则集，支持目录持久化挂载，一键部署，无配置报错，攻击拦截生效。
 
